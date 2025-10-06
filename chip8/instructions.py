@@ -10,7 +10,7 @@ class OpcodeNotImplementedError(ValueError):
 # Base class
 class Instr:
     id = None
-    name = None
+    name = "BASE"
 
     def __init__(self, opcode, **kwargs):
         self.opcode = opcode
@@ -18,18 +18,24 @@ class Instr:
     def eval(self, emu):
         raise OpcodeNotImplementedError(self)
         return emu
+    
+    def __call__(self, emu):
+        return self.eval(emu)
 
     def __str__(self):
-        return f"{self.id}({self.name}): {self.kwargs}"
+        return f"{self.name}: {self.id}({hex(self.opcode)})"
     
 class Chain(Instr):
     id = None
     name = "CHN"
-    def __init__(self, *instrs: Instr):
+
+    def __init__(self, *instrs: Instr, **kwargs):
+        super().__init__(None, **kwargs)
         self.instrs = instrs
 
     def eval(self, emu):
-        return reduce(lambda acc, instr: instr.eval(acc), self.instrs, emu)
+        if not self.instrs: return emu
+        else: return reduce(lambda acc, instr: instr(acc), self.instrs, emu)
 
 
 class Ix00E0(Instr):

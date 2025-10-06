@@ -152,7 +152,7 @@ class Emu:
         # return lut[ival & 0xF000]
 
     def execute(self, instr: Instr):
-        instr.eval(self)
+        instr(self)
 
     def tick(self):
         opcode = self.fetch()
