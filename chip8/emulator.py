@@ -67,25 +67,74 @@ class Keyboard(BooleanMatrix2D):
 
 
 class Emu:
+    INSTRUCTION_SIZE = 2
     MEM_SIZE = 0x1000
     # STACK_DEPTH = 16
+    START_ADDR = 0x200
 
-    def __init__(self, mem_size=MEM_SIZE):
+    TIMER_FREQ = 60  # in Hz
+    INSTR_FREQ = 600  # in Hz
+    RATIO = INSTR_FREQ / TIMER_FREQ
+
+    FONT = bytes([
+        0xF0, 0x90, 0x90, 0x90, 0xF0, # 0
+        0x20, 0x60, 0x20, 0x20, 0x70, # 1
+        0xF0, 0x10, 0xF0, 0x80, 0xF0, # 2
+        0xF0, 0x10, 0xF0, 0x10, 0xF0, # 3
+        0x90, 0x90, 0xF0, 0x10, 0x10, # 4
+        0xF0, 0x80, 0xF0, 0x10, 0xF0, # 5
+        0xF0, 0x80, 0xF0, 0x90, 0xF0, # 6
+        0xF0, 0x10, 0x20, 0x40, 0x40, # 7
+        0xF0, 0x90, 0xF0, 0x90, 0xF0, # 8
+        0xF0, 0x90, 0xF0, 0x10, 0xF0, # 9
+        0xF0, 0x90, 0xF0, 0x90, 0x90, # A
+        0xE0, 0x90, 0xE0, 0x90, 0xE0, # B
+        0xF0, 0x80, 0x80, 0x80, 0xF0, # C
+        0xE0, 0x90, 0x90, 0x90, 0xE0, # D
+        0xF0, 0x80, 0xF0, 0x80, 0xF0, # E
+        0xF0, 0x80, 0xF0, 0x80, 0x80  # F
+    ])
+
+    def __init__(
+        self,
+        rom: str,
+        start_addr: int = START_ADDR,
+        mem_size: int = MEM_SIZE,
+        ratio: int = RATIO,
+        quirk_vf_reset = True,
+        quirk_memory = True,
+        quirk_disp_wait = True,
+        quirk_clipping = True,
+        quirk_shifting = False,
+        quirk_jumping = False,
+    ):
         self.mem = bytearray(mem_size)
+        self.mem[: self.START_ADDR] = self.FONT
 
-        self.pc = 0x200
+        self.pc = start_addr
 
-        self.v = bytearray(16)
         self.i = 0x0
+        self.v = bytearray(16)
 
-        self.stack = []  # [0] * self.STACK_DEPTH
-        # self.sp = 0
+        self.stack = []
 
-        self.delay_timer = 0
-        self.sound_timer = 0
+        self.scr = Screen()
+        self.kbd = Keyboard()
 
-        self.keyboard = Keyboard()
-        self.screen = Screen()
+        self.dt = 0
+        self.st = 0
+        self.it = 0
+
+        self.release = 0
+        self.ctr = ratio
+        self.dirty = 1
+
+        self.quirk_vf_reset = quirk_vf_reset
+        self.quirk_memory = quirk_memory
+        self.quirk_disp_wait = quirk_disp_wait
+        self.quirk_clipping = quirk_clipping
+        self.quirk_shifting = quirk_shifting
+        self.quirk_jumping = quirk_jumping
 
     def next(self):
         self.pc = (self.pc + 2) & 0x0FFF
@@ -94,7 +143,8 @@ class Emu:
         self.pc = (self.pc - 2) & 0x0FFF
 
     def fetch(self) -> int:
-        opcode = int.from_bytes(self.mem[self.pc : self.pc + 2], byteorder="big")
+        opcode_bytes = self.mem[self.pc : self.pc + self.INSTRUCTION_SIZE]
+        opcode = int.from_bytes(opcode_bytes, byteorder="big")
         self.next()
         return opcode
 
@@ -110,49 +160,9 @@ class Emu:
 
         return Instr(**kwargs)
 
-        # lut = {
-        #     0x0000: {0x00E0: Cls(), 0x00EE: Ret()}[nnn],
-        #     0x1000: Jp1(nnn=nnn),
-        #     0x2000: Call(nnn=nnn),
-        #     0x3000: Se3(x=x, nn=nn),
-        #     0x4000: Sne4(x=x, nn=nn),
-        #     0x5000: Se5(x=x, y=y),
-        #     0x6000: Ld6(x=x, nn=nn),
-        #     0x7000: Add7(x=x, nn=nn),
-        #     0x8000: {
-        #         0x0: Ld8(x=x, y=y),
-        #         0x1: Or(x=x, y=y),
-        #         0x2: And(x=x, y=y),
-        #         0x3: Xor(x=x, y=y),
-        #         0x4: Add8(x=x, y=y),
-        #         0x5: Sub(x=x, y=y),
-        #         0x6: Shr(x=x, y=y),
-        #         0x7: Subn(x=x, y=y),
-        #         0xE: Shl(x=x, y=y),
-        #     }[n],
-        #     0x9000: Sne9(x=x, y=y),
-        #     0xA000: LdA(nnn=nnn),
-        #     0xB000: JpB(nnn=nnn),
-        #     0xC000: Rnd(x=x, nn=nn),
-        #     0xD000: Drw(x=x, y=y, n=n),
-        #     0xE000: {0x9E: Skp(x=x), 0xA1: Sknp(x=x)}[nn],
-        #     0xF000: {
-        #         0x07: Lddt(x=x),
-        #         0x0A: Getk(x=x),
-        #         0x15: Strdt(x=x),
-        #         0x18: Strst(x=x),
-        #         0x1E: Addi(x=x),
-        #         0x29: Ldi(x=x),
-        #         0x33: Bcd(x=x),
-        #         0x55: Save(x=x),
-        #         0x65: Load(x=x),
-        #     }[nn],
-        # }
-
-        # return lut[ival & 0xF000]
 
     def execute(self, instr: Instr):
-        instr(self)
+        instr.eval(self)
 
     def tick(self):
         opcode = self.fetch()
@@ -164,14 +174,42 @@ class Emu:
         acc += self.screen
         acc += self.keyboard
         return acc
-    
+
     def compose(self, *instrs: Instr):
         return Chain(*instrs)
 
     # def composed_execute(self, *instrs: Instr):
     #     self.compose(*instrs)(self)
-        # for i in instrs: self.execute(i)
+    # for i in instrs: self.execute(i)
 
 
-x = Sys(N=123, X=23)
-print(x)
+class EmuPreDecoded(Emu):
+    def __init__(self, rom: str, **kwargs):
+        super().__init__(rom, **kwargs)
+        self.cc = [Instr()] * len(self.mem)
+        self._build_cache()
+
+    def _build_cache(self, beg: int = Emu.START_ADDR, end: int = Emu.MEM_SIZE):
+        for addr in range(beg, end, Emu.INSTRUCTION_SIZE):
+            opcode_bytes = self.mem[addr : addr + self.INSTRUCTION_SIZE]
+            opcode = int.from_bytes(opcode_bytes, byteorder="big")
+            instr = self.decode(opcode)
+            self.cc[addr] = instr
+
+    def fetch(self) -> Instr:
+        instr = self.cc(self.pc)
+        self.next()
+        return instr
+    
+    def tick(self):
+        instr = self.fetch()
+        self.execute(instr)
+        
+class EmuBasicBlock(EmuPreDecoded):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.dp = {}
+    
+    def tick(self):
+        pass
