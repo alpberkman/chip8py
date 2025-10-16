@@ -12,7 +12,6 @@ class OpcodeTypeError(TypeError):
         super().__init__(f"Opcode {opcode} cannot be converted to an Instruction")
 
 
-# Base class
 class Instr:
     id = None
     name = "BASE"
@@ -290,7 +289,7 @@ class Ix8XY6(Instr):
         self.y = y
 
     def eval(self, emu):
-        if not emu.quirk_shift:
+        if not emu.quirk_shifting:
             emu.v[self.x] = emu.v[self.y]
         flag = emu.v[self.x] & 0x1
         emu.v[self.x] >>= 0x1
@@ -322,7 +321,7 @@ class Ix8XYE(Instr):
         self.y = y
 
     def eval(self, emu):
-        if not emu.quirk_shift:
+        if not emu.quirk_shifting:
             emu.v[self.x] = emu.v[self.y]
         flag = emu.v[self.x] >> 0x7
         emu.v[self.x] = (emu.v[self.x] << 0x1) & 0xFF
@@ -408,7 +407,8 @@ class IxEX9E(Instr):
         self.x = x
 
     def eval(self, emu):
-        if emu.kbd[emu.v[self.x]] & 0x1:
+        vx = emu.v[self.x]
+        if (emu.kbd[vx // 8] >> (vx % 8)) & 0x1:
             emu.next()
 
 
@@ -421,11 +421,9 @@ class IxEXA1(Instr):
         self.x = x
 
     def eval(self, emu):
-        if not emu.kbd[emu.v[self.x]] & 0x1:
+        vx = emu.v[self.x]
+        if not (emu.kbd[vx // 8] >> (vx % 8)) & 0x1:
             emu.next()
-
-
-########################################################
 
 
 class IxFX07(Instr):
@@ -449,10 +447,9 @@ class IxFX0A(Instr):
         self.x = x
 
     def eval(self, emu):
-        if emu.kbd:
-            emu.v[self.x] = next(
-                (i for i in range(len(emu.kbd)) if (emu.kbd >> i) & 0x1), 0
-            )
+        if any(emu.kbd):
+            mask = emu.kbd.mask()
+            emu.v[self.x] = next((i for i in range(16) if (mask >> i) & 0x1), 0)
             emu.release = 1
             emu.unnext()
         else:
