@@ -1,4 +1,5 @@
 from chip8.instructions import *
+from chip8.io import Screen, Keyboard
 from pathlib import Path
 
 
@@ -7,95 +8,6 @@ class OpcodeSizeError(ValueError):
         self.expected = expected
         self.actual = actual
         super().__init__(f"Opcode must be {expected} bytes, got {actual}")
-
-
-class ByteArrayExtended(bytearray):
-    def __init__(self, width: int, height: int):
-        self.width = width
-        self.height = height
-        self.size = width * height // 8
-        super().__init__(self.size)
-
-    def clear(self):
-        for i in range(self.size):
-            self[i] = 0
-
-    def __str__(self):
-        acc = ""
-        acc += "*" * (self.width + 2)
-        acc += "\n*"
-        for i in range(self.size):
-            if i != 0 and i % 8 == 0:
-                acc += "*\n*"
-
-            bytei = self[i]
-            for bit in range(7, -1, -1):
-                if bytei & (1 << bit):
-                    acc += "#"
-                else:
-                    acc += " "
-
-        acc += "*\n"
-        acc += "*" * (self.width + 2)
-        return acc
-
-
-class Screen(ByteArrayExtended):
-    SCREEN_WIDTH = 64
-    SCREEN_HEIGHT = 32
-
-    def __init__(self, width: int = SCREEN_WIDTH, height: int = SCREEN_HEIGHT):
-        super().__init__(width=width, height=height)
-
-    def draw(self, emu, x: int, y: int, n: int):
-        if emu.quirk_disp_wait:
-            if emu.it:
-                emu.unnext()
-                return
-            else:
-                emu.it = 1
-
-        xx = emu.v[x] % self.width
-        yy = emu.v[y] % self.height
-        emu.v[0xF] = 0
-
-        if emu.quirk_clipping:
-            if yy + n > self.height:
-                n = self.height - yy
-
-        for i in range(n):
-            bytei = emu.mem[emu.i + i]
-            xxiu = xx // 8
-            xxil = (xx + 8) % self.width // 8
-            yyi = (yy + i) % self.height
-
-            upper = (bytei >> (xx % 8)) & 0xFF
-            baseu = xxiu + self.width // 8 * yyi
-
-            if self[baseu] & upper:
-                emu.v[0xF] = 1
-
-            self[baseu] ^= upper
-
-            if not emu.quirk_clipping or xxil > xxiu:
-                lower = (bytei << (8 - (xx % 8))) & 0xFF
-                basel = xxil + self.width // 8 * yyi
-
-                if self[basel] & lower:
-                    emu.v[0xF] = 1
-
-                self[basel] ^= lower
-
-
-class Keyboard(ByteArrayExtended):
-    KEYBOARD_WIDTH = 4
-    KEYBOARD_HEIGHT = 4
-
-    def __init__(self, width: int = KEYBOARD_WIDTH, height: int = KEYBOARD_HEIGHT):
-        super().__init__(width=width, height=height)
-
-    def mask(self) -> int:
-        return int(self[0]) | (int(self[1]) << 8)
 
 
 class Emu:
@@ -172,13 +84,14 @@ class Emu:
     def load(self, rom):
         self.rom = rom
         opcodes = Path(rom).read_bytes()
-        self.mem[self.pc : self.pc + len(opcodes)] = opcodes
+        self.rom_size = len(opcodes)
+        self.mem[self.pc : self.pc + self.rom_size] = opcodes
 
     def next(self):
-        self.pc = (self.pc + 2) & 0x0FFF
+        self.pc = (self.pc + self.INSTRUCTION_SIZE) & 0x0FFF
 
     def unnext(self):
-        self.pc = (self.pc - 2) & 0x0FFF
+        self.pc = (self.pc - self.INSTRUCTION_SIZE) & 0x0FFF
 
     def tick(self):
         pass
@@ -204,15 +117,19 @@ class Emu:
 
         return "\n".join(acc)
 
-    def compose(self, *instrs: Instr):
-        return Chain(*instrs)
+    def compose(self, *instrs: Instr) -> Chain:
+        return Chain(*[i for i in instrs if type(i) is not Dud])
 
 
 class EmuInterpreter(Emu):
 
-    def fetch(self) -> int:
-        opcode_bytes = self.mem[self.pc : self.pc + self.INSTRUCTION_SIZE]
+    def ifetch(self, addr: int) -> int:
+        opcode_bytes = self.mem[addr : addr + self.INSTRUCTION_SIZE]
         opcode = int.from_bytes(opcode_bytes, byteorder="big")
+        return opcode
+    
+    def fetch(self) -> int:
+        opcode = self.ifetch(self.pc)
         self.next()
         return opcode
 
@@ -231,45 +148,73 @@ class EmuInterpreter(Emu):
 
     def execute(self, instr: Instr):
         instr.eval(self)
+        # if type(instr) is Chain:
+        #     for _ in range(len(instr.instrs)):
+        #         self.timer()
+        # else:
+        self.timer()
 
     def tick(self):
         opcode = self.fetch()
         instr = self.decode(opcode)
+        print(f"{self.pc-2:06X}: {instr}")
         self.execute(instr)
-        self.timer()
 
 
-# class EmuPreDecoded(EmuInterpreter):
+class EmuPreDecoded(EmuInterpreter):
+    def __init__(self, rom: str, **kwargs):
+        super().__init__(rom, **kwargs)
+        self.cc = [Dud(0x0000)] * len(self.mem)
+        self._build_cache(beg=self.pc, end=self.pc + self.rom_size)
+
+        for i in range(self.pc, self.pc + self.rom_size):
+            print(f"{i:06X}: {self.cc[i]}")
+        print("End of code cache")
+
+    def _build_cache(self, beg: int = Emu.START_ADDR, end: int = Emu.MEM_SIZE):
+        for addr in range(beg, end, Emu.INSTRUCTION_SIZE):
+            opcode = self.ifetch(addr)
+            instr = self.decode(opcode)
+            self.cc[addr] = instr
+
+    def fetch(self) -> Instr:
+        instr = self.cc[self.pc]
+
+        opcode = self.ifetch(self.pc)
+        if instr.opcode != opcode:
+            self.cc[self.pc] = self.decode(opcode)
+            instr = self.cc[self.pc]
+            print("Redecoding")
+
+        self.next()
+        return instr
+
+    def tick(self):
+        instr = self.fetch()
+        print(f"{self.pc-2:06X}: {instr}")
+        self.execute(instr)
+
+
+# class EmuBasicBlock(EmuPreDecoded):
 #     def __init__(self, rom: str, **kwargs):
 #         super().__init__(rom, **kwargs)
-#         self.cc = [Instr()] * len(self.mem)
-#         self._build_cache()
 
-#     def _build_cache(self, beg: int = Emu.START_ADDR, end: int = Emu.MEM_SIZE):
-#         for addr in range(beg, end, Emu.INSTRUCTION_SIZE):
-#             opcode_bytes = self.mem[addr : addr + self.INSTRUCTION_SIZE]
-#             opcode = int.from_bytes(opcode_bytes, byteorder="big")
-#             instr = self.decode(opcode)
-#             self.cc[addr] = instr
+#         self.bb = {}
 
-#     def fetch(self) -> Instr:
-#         instr = self.cc(self.pc)
-#         self.next()
-#         return instr
+#     def fetch(self):
+#         if self.pc not in self.bb:
+#             beg = self.pc
+#             end = beg
+#             while (not isinstance(self.cc[end], Branch)) and (
+#                 not isinstance(self.cc[end], Graphics)
+#             ):
+#                 end += self.INSTRUCTION_SIZE
+#             self.bb[self.pc] = self.compose(self.cc[beg:end])
+
+#         bb = self.bb[self.pc]
+#         self.pc += self.INSTRUCTION_SIZE * len(bb)
+#         return bb
 
 #     def tick(self):
 #         instr = self.fetch()
 #         self.execute(instr)
-
-
-# class EmuBasicBlock(EmuPreDecoded):
-#     def __init__(self, **kwargs):
-#         super().__init__(**kwargs)
-
-#         self.dp = {}
-
-#     def fetch(self):
-#         pass
-
-#     def tick(self):
-#         pass
