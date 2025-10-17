@@ -1,28 +1,15 @@
 #!/usr/bin/env python
 
-from chip8.emulator import EmuInterpreter as Emu
+from chip8.gui import main
+from chip8.emulator import Emu
+import argparse
 
-
-roms = [
-    "1-chip8-logo.ch8",
-    "2-ibm-logo.ch8",
-    "3-corax+.ch8",
-    "4-flags.ch8",
-    "5-quirks.ch8",
-    "6-keypad.ch8",
-    "7-beep.ch8",
-    "8-scrolling.ch8",
-]
-
-emu = Emu(roms[3])
-print(emu)
-while 1:
-    emu.tick()
-
-    if emu.dirty:
-        print(emu)
-        #     print("Dirty")
-        emu.dirty = 0
-    # else:
-    #     print("Clean")
-    # print(emu.scr)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("rom", help="Path to CHIP-8 ROM")
+    parser.add_argument("--emu-type", type=str, default="predecoded", help="One of the following: basic (b), predecoded (pd), basicblock (bb)")
+    parser.add_argument("--debug", action='store_true', help="Enable debug information")
+    parser.add_argument("--scale", type=int, default=10, help="Pixel scale")
+    parser.add_argument("--fps", type=int, default=Emu.INSTR_FREQ, help="Instruction ticks per second")
+    args = parser.parse_args()
+    main(args)
