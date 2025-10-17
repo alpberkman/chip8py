@@ -1,4 +1,4 @@
-from chip8.instructions import *
+from chip8.instructions import match, Instr, Dud, Chain, Branch, Graphics
 from chip8.io import Screen, Keyboard
 from pathlib import Path
 
@@ -50,7 +50,10 @@ class Emu:
         quirk_clipping=True,
         quirk_shifting=False,
         quirk_jumping=False,
+        debug=False,
     ):
+        self.debug = debug
+
         self.mem = bytearray(mem_size)
         self.mem[: len(self.FONT)] = self.FONT
 
@@ -93,6 +96,11 @@ class Emu:
     def unnext(self):
         self.pc = (self.pc - self.INSTRUCTION_SIZE) & 0x0FFF
 
+    def ifetch(self, addr: int) -> int:
+        opcode_bytes = self.mem[addr : addr + self.INSTRUCTION_SIZE]
+        opcode = int.from_bytes(opcode_bytes, byteorder="big")
+        return opcode
+
     def tick(self):
         pass
 
@@ -123,15 +131,8 @@ class Emu:
 
 class EmuInterpreter(Emu):
 
-    def ifetch(self, addr: int) -> int:
-        opcode_bytes = self.mem[addr : addr + self.INSTRUCTION_SIZE]
-        opcode = int.from_bytes(opcode_bytes, byteorder="big")
-        return opcode
-    
     def fetch(self) -> int:
-        opcode = self.ifetch(self.pc)
-        self.next()
-        return opcode
+        return self.ifetch(self.pc)
 
     def decode(self, opcode: int) -> Instr:
 
@@ -157,7 +158,11 @@ class EmuInterpreter(Emu):
     def tick(self):
         opcode = self.fetch()
         instr = self.decode(opcode)
-        print(f"{self.pc-2:06X}: {instr}")
+
+        if self.debug:
+            print(f"{self.pc:06X}: {instr}")
+
+        self.next()
         self.execute(instr)
 
 
@@ -167,9 +172,10 @@ class EmuPreDecoded(EmuInterpreter):
         self.cc = [Dud(0x0000)] * len(self.mem)
         self._build_cache(beg=self.pc, end=self.pc + self.rom_size)
 
-        for i in range(self.pc, self.pc + self.rom_size):
-            print(f"{i:06X}: {self.cc[i]}")
-        print("End of code cache")
+        if self.debug:
+            for i in range(self.pc, self.pc + self.rom_size):
+                print(f"{i:06X}: {self.cc[i]}")
+            print("End of code cache")
 
     def _build_cache(self, beg: int = Emu.START_ADDR, end: int = Emu.MEM_SIZE):
         for addr in range(beg, end, Emu.INSTRUCTION_SIZE):
@@ -184,37 +190,50 @@ class EmuPreDecoded(EmuInterpreter):
         if instr.opcode != opcode:
             self.cc[self.pc] = self.decode(opcode)
             instr = self.cc[self.pc]
-            print("Redecoding")
+            if self.debug:
+                print(f"Redecoding the instruction at {self.pc:06X}")
 
-        self.next()
         return instr
 
     def tick(self):
         instr = self.fetch()
-        print(f"{self.pc-2:06X}: {instr}")
+
+        if self.debug:
+            print(f"{self.pc:06X}: {instr}")
+
+        self.next()
         self.execute(instr)
 
 
-# class EmuBasicBlock(EmuPreDecoded):
-#     def __init__(self, rom: str, **kwargs):
-#         super().__init__(rom, **kwargs)
+class EmuBasicBlock(EmuPreDecoded):
+    def __init__(self, rom: str, **kwargs):
+        super().__init__(rom, **kwargs)
 
-#         self.bb = {}
+        self.bb = {}
 
-#     def fetch(self):
-#         if self.pc not in self.bb:
-#             beg = self.pc
-#             end = beg
-#             while (not isinstance(self.cc[end], Branch)) and (
-#                 not isinstance(self.cc[end], Graphics)
-#             ):
-#                 end += self.INSTRUCTION_SIZE
-#             self.bb[self.pc] = self.compose(self.cc[beg:end])
+    def nnext(self, instr: Chain):
+        n = self.INSTRUCTION_SIZE * len(instr.instrs)
+        self.pc = (self.pc + n) & 0x0FFF
 
-#         bb = self.bb[self.pc]
-#         self.pc += self.INSTRUCTION_SIZE * len(bb)
-#         return bb
+    def fetch(self):
+        if self.pc not in self.bb:
+            if self.debug:
+                print(f"Fetching BB starting at {self.pc:06X}")
 
-#     def tick(self):
-#         instr = self.fetch()
-#         self.execute(instr)
+            beg = self.pc
+            end = beg
+            while not isinstance(self.cc[end], (Branch, Graphics)):
+                end += self.INSTRUCTION_SIZE
+
+            self.bb[self.pc] = self.compose(*self.cc[beg : end + self.INSTRUCTION_SIZE])
+
+        return self.bb[self.pc]
+
+    def tick(self):
+        instr = self.fetch()
+
+        if self.debug:
+            print(f"{self.pc:06X}: {instr}")
+
+        self.nnext(instr)
+        self.execute(instr)

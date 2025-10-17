@@ -66,7 +66,18 @@ class Chain(Instr):
 
 class Dud(Instr):
     id = None
-    name = "DMY"
+    name = "DUD"
+
+    def __init__(self, opcode: int, **kwargs):
+        super().__init__(opcode, **kwargs)
+
+    def eval(self, emu):
+        pass
+
+
+class Debug(Instr):
+    id = None
+    name = "DEBUG"
 
     def __init__(
         self, opcode: int, x: int, y: int, n: int, nn: int, nnn: int, **kwargs
@@ -78,11 +89,28 @@ class Dud(Instr):
         self.nn = nn
         self.nnn = nnn
 
-    def eval(self, emu):
-        pass
+
+class Branch(Instr):
+    name = "BRANCH"
 
 
-class Ix00E0(Instr):
+class Bitwise(Instr):
+    name = "BITWISE"
+
+
+class Math(Instr):
+    name = "MATH"
+
+
+class Load(Instr):
+    name = "LOAD"
+
+
+class Graphics(Instr):
+    name = "GRAPHICS"
+
+
+class Ix00E0(Graphics):
     id = "00E0"
     name = "CLS"
 
@@ -91,7 +119,7 @@ class Ix00E0(Instr):
         emu.dirty = 1
 
 
-class Ix00EE(Instr):
+class Ix00EE(Branch):
     id = "00EE"
     name = "RET"
 
@@ -99,7 +127,7 @@ class Ix00EE(Instr):
         emu.pc = emu.stack.pop()
 
 
-class Ix1NNN(Instr):
+class Ix1NNN(Branch):
     id = "1NNN"
     name = "JP"
 
@@ -111,7 +139,7 @@ class Ix1NNN(Instr):
         emu.pc = self.nnn
 
 
-class Ix2NNN(Instr):
+class Ix2NNN(Branch):
     id = "2NNN"
     name = "CALL"
 
@@ -124,7 +152,7 @@ class Ix2NNN(Instr):
         emu.pc = self.nnn
 
 
-class Ix3XNN(Instr):
+class Ix3XNN(Branch):
     id = "3XNN"
     name = "SE"
 
@@ -138,7 +166,7 @@ class Ix3XNN(Instr):
             emu.next()
 
 
-class Ix4XNN(Instr):
+class Ix4XNN(Branch):
     id = "4XNN"
     name = "SNE"
 
@@ -152,7 +180,7 @@ class Ix4XNN(Instr):
             emu.next()
 
 
-class Ix5XY0(Instr):
+class Ix5XY0(Branch):
     id = "5XY0"
     name = "SE"
 
@@ -166,7 +194,7 @@ class Ix5XY0(Instr):
             emu.next()
 
 
-class Ix6XNN(Instr):
+class Ix6XNN(Load):
     id = "6XNN"
     name = "LD"
 
@@ -179,7 +207,7 @@ class Ix6XNN(Instr):
         emu.v[self.x] = self.nn
 
 
-class Ix7XNN(Instr):
+class Ix7XNN(Math):
     id = "7XNN"
     name = "ADD"
 
@@ -192,7 +220,7 @@ class Ix7XNN(Instr):
         emu.v[self.x] = (emu.v[self.x] + self.nn) & 0xFF
 
 
-class Ix8XY0(Instr):
+class Ix8XY0(Load):
     id = "8XY0"
     name = "LD"
 
@@ -205,7 +233,7 @@ class Ix8XY0(Instr):
         emu.v[self.x] = emu.v[self.y]
 
 
-class Ix8XY1(Instr):
+class Ix8XY1(Bitwise):
     id = "8XY1"
     name = "OR"
 
@@ -220,7 +248,7 @@ class Ix8XY1(Instr):
             emu.v[0xF] = 0
 
 
-class Ix8XY2(Instr):
+class Ix8XY2(Bitwise):
     id = "8XY2"
     name = "AND"
 
@@ -235,7 +263,7 @@ class Ix8XY2(Instr):
             emu.v[0xF] = 0
 
 
-class Ix8XY3(Instr):
+class Ix8XY3(Bitwise):
     id = "8XY3"
     name = "XOR"
 
@@ -250,7 +278,7 @@ class Ix8XY3(Instr):
             emu.v[0xF] = 0
 
 
-class Ix8XY4(Instr):
+class Ix8XY4(Math):
     id = "8XY4"
     name = "ADD"
 
@@ -264,7 +292,7 @@ class Ix8XY4(Instr):
         emu.v[0xF] = emu.v[self.x] < emu.v[self.y]
 
 
-class Ix8XY5(Instr):
+class Ix8XY5(Math):
     id = "8XY5"
     name = "SUB"
 
@@ -279,7 +307,7 @@ class Ix8XY5(Instr):
         emu.v[0xF] = flag
 
 
-class Ix8XY6(Instr):
+class Ix8XY6(Bitwise):
     id = "8XY6"
     name = "SHR"
 
@@ -296,7 +324,7 @@ class Ix8XY6(Instr):
         emu.v[0xF] = flag
 
 
-class Ix8XY7(Instr):
+class Ix8XY7(Math):
     id = "8XY7"
     name = "SUBN"
 
@@ -311,7 +339,7 @@ class Ix8XY7(Instr):
         emu.v[0xF] = flag
 
 
-class Ix8XYE(Instr):
+class Ix8XYE(Bitwise):
     id = "8XYE"
     name = "SHL"
 
@@ -328,7 +356,7 @@ class Ix8XYE(Instr):
         emu.v[0xF] = flag
 
 
-class Ix9XY0(Instr):
+class Ix9XY0(Branch):
     id = "9XY0"
     name = "SNE"
 
@@ -342,7 +370,7 @@ class Ix9XY0(Instr):
             emu.next()
 
 
-class IxANNN(Instr):
+class IxANNN(Load):
     id = "ANNN"
     name = "LD"
 
@@ -354,7 +382,7 @@ class IxANNN(Instr):
         emu.i = self.nnn
 
 
-class IxBNNN(Instr):
+class IxBNNN(Branch):
     id = "BNNN"
     name = "JP"
 
@@ -370,7 +398,7 @@ class IxBNNN(Instr):
             emu.pc = self.nnn + emu.v[0x0]
 
 
-class IxCXNN(Instr):
+class IxCXNN(Load):
     id = "CXNN"
     name = "RND"
 
@@ -383,7 +411,7 @@ class IxCXNN(Instr):
         emu.v[self.x] = self.nn & randint(0, 255)
 
 
-class IxDXYN(Instr):
+class IxDXYN(Graphics):
     id = "DXYN"
     name = "DRW"
 
@@ -398,7 +426,7 @@ class IxDXYN(Instr):
         emu.dirty = 1
 
 
-class IxEX9E(Instr):
+class IxEX9E(Branch):
     id = "EX9E"
     name = "SKP"
 
@@ -412,7 +440,7 @@ class IxEX9E(Instr):
             emu.next()
 
 
-class IxEXA1(Instr):
+class IxEXA1(Branch):
     id = "EXA1"
     name = "SKNP"
 
@@ -426,7 +454,7 @@ class IxEXA1(Instr):
             emu.next()
 
 
-class IxFX07(Instr):
+class IxFX07(Load):
     id = "FX07"
     name = "LD"
 
@@ -438,7 +466,7 @@ class IxFX07(Instr):
         emu.v[self.x] = emu.dt
 
 
-class IxFX0A(Instr):
+class IxFX0A(Branch):
     id = "FX0A"
     name = "LD"
 
@@ -459,7 +487,7 @@ class IxFX0A(Instr):
                 emu.unnext()
 
 
-class IxFX15(Instr):
+class IxFX15(Load):
     id = "FX15"
     name = "LD"
 
@@ -471,7 +499,7 @@ class IxFX15(Instr):
         emu.dt = emu.v[self.x]
 
 
-class IxFX18(Instr):
+class IxFX18(Load):
     id = "FX18"
     name = "LD"
 
@@ -483,7 +511,7 @@ class IxFX18(Instr):
         emu.st = emu.v[self.x]
 
 
-class IxFX1E(Instr):
+class IxFX1E(Math):
     id = "FX1E"
     name = "ADD"
 
@@ -495,7 +523,7 @@ class IxFX1E(Instr):
         emu.i += emu.v[self.x]
 
 
-class IxFX29(Instr):
+class IxFX29(Load):
     id = "FX29"
     name = "LD"
 
@@ -507,7 +535,7 @@ class IxFX29(Instr):
         emu.i = emu.v[self.x] * 5
 
 
-class IxFX33(Instr):
+class IxFX33(Load):
     id = "FX33"
     name = "LD"
 
@@ -521,7 +549,7 @@ class IxFX33(Instr):
         emu.mem[emu.i + 2] = emu.v[self.x] % 10
 
 
-class IxFX55(Instr):
+class IxFX55(Load):
     id = "FX55"
     name = "LD"
 
@@ -536,7 +564,7 @@ class IxFX55(Instr):
             emu.i += self.x + 1
 
 
-class IxFX65(Instr):
+class IxFX65(Load):
     id = "FX65"
     name = "LD"
 
@@ -551,7 +579,7 @@ class IxFX65(Instr):
             emu.i += self.x + 1
 
 
-def match(opcode: int | str):
+def match(opcode: int | str) -> Instr:
     import re
 
     if isinstance(opcode, int):
@@ -561,7 +589,7 @@ def match(opcode: int | str):
     else:
         raise OpcodeTypeError(opcode)
 
-    for cls in Instr.__subclasses__():
+    for cls in [ssc for sc in Instr.__subclasses__() for ssc in sc.__subclasses__()]:
         pattern = getattr(cls, "id", None)
         if not pattern:
             continue
@@ -570,4 +598,4 @@ def match(opcode: int | str):
         if re.match(regex, opcode_str):
             return cls
 
-    return Instr
+    return Debug
