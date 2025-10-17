@@ -227,6 +227,9 @@ class EmuBasicBlock(EmuPreDecoded):
 
             self.bb[self.pc] = self.compose(*self.cc[beg : end + self.INSTRUCTION_SIZE])
 
+            if self.debug:
+                print(f"{self.pc:06X}: {self.bb[self.pc]}")
+
         return self.bb[self.pc]
 
     def tick(self):
