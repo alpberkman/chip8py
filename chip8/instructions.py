@@ -561,9 +561,13 @@ class IxFX55(Load):
         for i in range(self.x + 1):
             emu.mem[emu.i + i] = emu.v[i]
         
-        from chip8.emulator import EmuPreDecoded
-        if isinstance(emu, EmuPreDecoded):
+        from chip8.emulator import EmuPreDecoded, EmuBasicBlock
+        if isinstance(emu, (EmuPreDecoded, EmuBasicBlock)):
             emu._build_cache(beg=emu.i & 0xFFFE, end=emu.i + self.x + 1)
+        if isinstance(emu, EmuBasicBlock):
+            for k in list(emu.bb.keys()):
+                if  k <= emu.i and emu.i + self.x + 1 <= k + 2*len(emu.bb[k].instrs):
+                    del self.bb[k]
 
         if emu.quirk_memory:
             emu.i += self.x + 1

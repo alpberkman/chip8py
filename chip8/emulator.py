@@ -1,4 +1,4 @@
-from chip8.instructions import match, Instr, Dud, Chain, Branch, Graphics
+from chip8.instructions import match, Instr, Dud, Chain, Branch, Graphics, IxFX55
 from chip8.io import Screen, Keyboard
 from pathlib import Path
 
@@ -149,11 +149,11 @@ class EmuInterpreter(Emu):
 
     def execute(self, instr: Instr):
         instr.eval(self)
-        # if type(instr) is Chain:
-        #     for _ in range(len(instr.instrs)):
-        #         self.timer()
-        # else:
-        self.timer()
+        if type(instr) is Chain:
+            for _ in range(len(instr.instrs)):
+                self.timer()
+        else:
+            self.timer()
 
     def tick(self):
         opcode = self.fetch()
@@ -215,7 +215,7 @@ class EmuBasicBlock(EmuPreDecoded):
 
             beg = self.pc
             end = beg
-            while not isinstance(self.cc[end], (Branch, Graphics)):
+            while not isinstance(self.cc[end], (Branch, Graphics, IxFX55)):
                 end += self.INSTRUCTION_SIZE
 
             self.bb[self.pc] = self.compose(*self.cc[beg : end + self.INSTRUCTION_SIZE])
