@@ -182,18 +182,11 @@ class EmuPreDecoded(EmuInterpreter):
             opcode = self.ifetch(addr)
             instr = self.decode(opcode)
             self.cc[addr] = instr
+            if self.debug:
+                print(f"Decoding 0x{addr:06X}: {instr}")
 
     def fetch(self) -> Instr:
-        instr = self.cc[self.pc]
-
-        opcode = self.ifetch(self.pc)
-        if instr.opcode != opcode:
-            self.cc[self.pc] = self.decode(opcode)
-            instr = self.cc[self.pc]
-            if self.debug:
-                print(f"Redecoding the instruction at {self.pc:06X}")
-
-        return instr
+        return self.cc[self.pc]
 
     def tick(self):
         instr = self.fetch()

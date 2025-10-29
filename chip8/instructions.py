@@ -560,6 +560,11 @@ class IxFX55(Load):
     def eval(self, emu):
         for i in range(self.x + 1):
             emu.mem[emu.i + i] = emu.v[i]
+        
+        from chip8.emulator import EmuPreDecoded
+        if isinstance(emu, EmuPreDecoded):
+            emu._build_cache(beg=emu.i & 0xFFFE, end=emu.i + self.x + 1)
+
         if emu.quirk_memory:
             emu.i += self.x + 1
 
